@@ -1,0 +1,71 @@
+const express = require('express');
+const { MongoClient } = require('mongodb');
+const { Pool } = require('pg');
+const bodyParser = require('body-parser');
+const bcrypt = require('bcrypt');
+
+const app = express();
+const port = 3000;
+
+// Configuración de MongoDB
+const mongoURL = 'mongodb://localhost:27017';
+const mongoDBName = 'sgu_db';
+const mongoCollectionName = 'InicioSesion';
+
+// Configuración de PostgreSQL
+const pgPool = new Pool({
+  user: 'tu_usuario',
+  host: 'localhost',
+  database: 'DatosUsuarios',
+  password: 'tu_contraseña',
+  port: 5432, // Puerto por defecto de PostgreSQL
+});
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.post('/registrar-usuario', async (req, res) => {
+  try {
+    const { nombre, correo, contrasena } = req.body;
+
+    // Obtiene la fecha y hora actual
+    const fechaCreacion = new Date();
+
+    // Inserta los datos en PostgreSQL
+    const pgInsertQuery = 'INSERT INTO usuarios (fechaCreacion, nombre, correoElectronico) VALUES ($1, $2, $3)';
+    await pgPool.query(pgInsertQuery, [fechaCreacion, nombre, correo]);
+
+    // Cifra la contraseña
+    const contrasenaCifrada = await bcrypt.hash(contrasena, 10);
+
+    // Distinguir entre usuarios y administradores
+    const esAdmin = correo.endsWith('@miumg.edu.gt');
+
+    // Inserta los datos en MongoDB
+    const mongoClient = new MongoClient(mongoURL, { useUnifiedTopology: true });
+    await mongoClient.connect();
+
+    const mongoDB = mongoClient.db(mongoDBName);
+    const mongoCollection = mongoDB.collection(mongoCollectionName);
+
+    const mongoDocumento = {
+      nombre,
+      correoElectronico: correo,
+      contraseña: contrasenaCifrada,
+      esAdmin,
+    };
+
+    await mongoCollection.insertOne(mongoDocumento);
+
+    mongoClient.close();
+
+    res.status(200).json({ message: 'Usuario registrado con éxito.' });
+  } catch (error) {
+    console.error('Error al registrar el usuario:', error);
+    res.status(500).json({ message: 'Error al registrar el usuario.' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Servidor en ejecución en el puerto ${port}`);
+});
