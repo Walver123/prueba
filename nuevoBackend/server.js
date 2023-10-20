@@ -1,34 +1,110 @@
 const express = require('express');
+const { dbName } = require('./conexion.js');
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
-const User = require('./modelo.js');
 
 const app = express();
 const port = 3000;
 
-mongoose.connect('mongodb+srv://stevgtpayes:root1234@cluster0.ohcx1sx.mongodb.net/prueba?retryWrites=true&w=majority');//insertar string de conexion
+async function conectarDB() {
+  try {
+    await mongoose.connect(`mongodb://localhost:27017/${dbName}`, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log('Conectado a MongoDB con Mongoose');
+  } catch (error) {
+    console.error('Error al conectar a MongoDB con Mongoose:', error);
+  }
+}
+
+conectarDB();
 
 app.use(express.json());
 app.use(express.static('public'));
 
+const UsuarioSchema = new mongoose.Schema({
+  nombre: String,
+  correo: String,
+  contrasena: String,
+});
+
+const Usuario = mongoose.model('Usuario', UsuarioSchema);
+
 app.post('/registrar-usuario', async (req, res) => {
-  const {body} = req;
-  console.log(body);
-  try{
-      const isUser = await User.findOne({correo: body.correo});
-      if(isUser){
-          return res.status(403).send('user already exists');
-      }
-      const userRegister = await User.create({correo: body.correo, contrasena: body.contrasena, });
-      console.log(userRegister);
-      res.send(userRegister);
-  }catch(e){
-      console.error(e);
-      res.status(500).send(e.message);
-  };
+  try {
+    const nombre = req.body.nombre;
+    const correo = req.body.correo;
+    const contrasena = req.body.contrasena;
+
+    if (!nombre || !correo || !contrasena) {
+      console.log('Ningún dato puede ser nulo. Saliendo.');
+      res.status(400).json({ message: 'Los datos no pueden ser nulos.' });
+      return;
+    }
+
+    const usuario = new Usuario({
+      nombre: nombre,
+      correo: correo,
+      contrasena: contrasena,
+    });
+
+    await usuario.save();
+
+    res.status(200).json({ message: 'Usuario registrado con éxito.' });
+
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Error al registrar el usuario.' });
+  }
+});
+
+app.put('/actualizar-usuario/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { nombre, correo, contrasena } = req.body;
+
+    if (!nombre || !correo || !contrasena) {
+      return res.status(400).json({ message: 'Todos los campos son requeridos.' });
+    }
+
+    const updateData = {
+      nombre: nombre,
+      correo: correo,
+      contrasena: contrasena,
+    };
+
+    const updatedUser = await Usuario.findByIdAndUpdate(userId, updateData, { new: true });
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Usuario no encontrado.' });
+    }
+
+    res.status(200).json({ message: 'Usuario actualizado con éxito', usuario: updatedUser });
+
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Error al actualizar el usuario.' });
+  }
+});
+
+app.delete('/eliminar-usuario/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const deletedUser = await Usuario.findByIdAndRemove(userId);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: 'Usuario no encontrado.' });
+    }
+
+    res.status(200).json({ message: 'Usuario eliminado con éxito' });
+
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Error al eliminar el usuario.' });
+  }
 });
 
 app.listen(port, () => {
   console.log(`Servidor Express en ejecución en el puerto ${port}`);
-  console.log(`Ruta de registro de usuarios: http://localhost:${port}/registrar-usuario`);
 });
